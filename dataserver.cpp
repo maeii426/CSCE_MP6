@@ -27,10 +27,12 @@
 #include <stdlib.h>
 #include <climits>
 #include <vector>
+#include <stdio.h>
 
-#include "reqchannel.h"
+#include "NetworkRequestChannel.h"
 
 using namespace std;
+
 
 /*--------------------------------------------------------------------------*/
 /* VARIABLES */
@@ -42,7 +44,7 @@ static int nthreads = 0;
 /* FORWARDS */
 /*--------------------------------------------------------------------------*/
 
-void handle_process_loop(RequestChannel & _channel);
+void handle_process_loop(NetworkRequestChannel & _channel);
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- SUPPORT FUNCTIONS */
@@ -58,9 +60,11 @@ string int2string(int number) {
 /* LOCAL FUNCTIONS -- THREAD FUNCTIONS */
 /*--------------------------------------------------------------------------*/
 
-void * handle_data_requests(void * args) {
-
-  RequestChannel * data_channel =  (RequestChannel*)args;
+void * handle_data_requests(int * args) {
+ 
+  char buf [1024];
+  return 0;
+  //NetworkRequestChannel * data_channel =  (NetworkRequestChannel*)args;
 
   // -- Handle client requests on this channel. 
   
@@ -68,24 +72,24 @@ void * handle_data_requests(void * args) {
 
   // -- Client has quit. We remove channel.
  
-  delete data_channel;
+  //delete data_channel;  
 }
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- INDIVIDUAL REQUESTS */
 /*--------------------------------------------------------------------------*/
 
-void process_hello(RequestChannel & _channel, const string & _request) {
+void process_hello(NetworkRequestChannel & _channel, const string & _request) {
   _channel.cwrite("hello to you too");
 }
 
-void process_data(RequestChannel & _channel, const string &  _request) {
+void process_data(NetworkRequestChannel & _channel, const string &  _request) {
   usleep(1000 + (rand() % 5000));
   //_channel.cwrite("here comes data about " + _request.substr(4) + ": " + int2string(random() % 100));
   _channel.cwrite(int2string(rand() % 100));
 }
-
-void process_newthread(RequestChannel & _channel, const string & _request) {
+/*
+void process_newthread(NetworkRequestChannel & _channel, const string & _request) {
   int error;
   nthreads ++;
 
@@ -100,7 +104,7 @@ void process_newthread(RequestChannel & _channel, const string & _request) {
 
   // -- Construct new data channel (pointer to be passed to thread function)
   
-  RequestChannel * data_channel = new RequestChannel(new_channel_name, RequestChannel::SERVER_SIDE);
+  NetworkRequestChannel * data_channel = new NetworkRequestChannel(new_channel_name, NetworkRequestChannel::SERVER_SIDE);
 
   // -- Create new thread to handle request channel
 
@@ -109,14 +113,13 @@ void process_newthread(RequestChannel & _channel, const string & _request) {
   if (error = pthread_create(& thread_id, NULL, handle_data_requests, data_channel)) {
     fprintf(stderr, "p_create failed: %s\n", strerror(error));
   }  
-
-}
+}*/
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- THE PROCESS REQUEST LOOP */
 /*--------------------------------------------------------------------------*/
 
-void process_request(RequestChannel & _channel, const string & _request) {
+void process_request(NetworkRequestChannel & _channel, const string & _request) {
 
   if (_request.compare(0, 5, "hello") == 0) {
     process_hello(_channel, _request);
@@ -124,20 +127,20 @@ void process_request(RequestChannel & _channel, const string & _request) {
   else if (_request.compare(0, 4, "data") == 0) {
     process_data(_channel, _request);
   }
-  else if (_request.compare(0, 9, "newthread") == 0) {
+/*  else if (_request.compare(0, 9, "newthread") == 0) {
     process_newthread(_channel, _request);
-  }
+  }*/
   else {
     _channel.cwrite("unknown request");
   }
 
 }
 
-int handle_process_loop(char* p, int b) 
+void handle_process(char* p, int b) 
 {
 	/* First initialize network interface */
 	
-	int backlog = b;
+/*	int backlog = b;
 	int sockfd;
 	vector<int> connection_fds;
 	fd_set active_fds, temp;
@@ -157,21 +160,21 @@ int handle_process_loop(char* p, int b)
 	
 
 	/* Get information about server's local address info */
-    if ((rv = getaddrinfo(NULL, p, &hints, &serv)) != 0) 
+/*    if ((rv = getaddrinfo(NULL, p, &hints, &serv)) != 0) 
 	{
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return -1;
     }
 	
 	/* Allocate a socket for the server */
-	if ((sockfd = socket(serv->ai_family, serv->ai_socktype, serv->ai_protocol)) == -1) 
+/*	if ((sockfd = socket(serv->ai_family, serv->ai_socktype, serv->ai_protocol)) == -1) 
 	{
         perror("server: socket");
 		return -1;
     }
 	
 	/* Associate socket with a port on this machine */
-    if (bind(sockfd, serv->ai_addr, serv->ai_addrlen) == -1) 
+/*    if (bind(sockfd, serv->ai_addr, serv->ai_addrlen) == -1) 
 	{
 		close(sockfd);
 		perror("server: bind");
@@ -199,9 +202,6 @@ int handle_process_loop(char* p, int b)
         printf("server: got connection\n");
 		recv (new_fd, buf, sizeof (buf), 0);
 		printf("server: received msg: %s\n", buf);
-
-		
-		
 		
 		// send
 		string message = "Hello to you";
@@ -277,10 +277,14 @@ int main(int argc, char * argv[])
         backlog = new_backlog;
     }
 	
-	/* Call main handler loop */
-	char* temp = new char[port.length() + 1];
-	strcpy(temp, port.c_str());
-	handle_process_loop(temp, backlog);
+	/* Start the server */
+  NetworkRequestChannel server(port, backlog, &handle_data_requests);
+
+
+
+//	char* temp = new char[port.length() + 1];
+//	strcpy(temp, port.c_str());
+//	handle_process(temp, backlog);
 	
 	return 0;
 }

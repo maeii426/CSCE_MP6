@@ -14,9 +14,6 @@
 /* INCLUDES */
 /*--------------------------------------------------------------------------*/
 
-// For bonus, use timer interrupt generator and a signal handler to print everything.  
-
-
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -31,13 +28,14 @@
 #include <pthread.h>
 #include <map>
 #include <netdb.h>
+#include <stdio.h>
 
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h>
 
-#include "reqchannel.h"
+#include "NetworkRequestChannel.h"
 #include "boundedbuffer.h"
 
 using namespace std;
@@ -93,10 +91,10 @@ struct handler_struct
 {
     boundedbuffer* request_buffer;
     vector<boundedbuffer>* response_buffers;
-    vector<RequestChannel*> request_channels;
+    vector<NetworkRequestChannel*> request_channels;
     int num_requests;
 
-    handler_struct(boundedbuffer* buff, vector<boundedbuffer>* rb, vector<RequestChannel*> rc, int nr)
+    handler_struct(boundedbuffer* buff, vector<boundedbuffer>* rb, vector<NetworkRequestChannel*> rc, int nr)
     {
         request_buffer = buff;
         response_buffers = rb;
@@ -262,7 +260,7 @@ int main(int argc, char * argv[]) {
     int buffer_size = 10000;
     int num_reqchan = 30;
 	string port = "4995";
-	string server_name = "compute";
+	string server_name = "0";
     bool *responses_complete = new bool(false);
     bool *handler_done = new bool(false);
     
@@ -323,7 +321,20 @@ int main(int argc, char * argv[]) {
         }
         num_reqchan = new_reqchan;
     }
-	
+    if(server_name == "")
+    {
+    	string new_server_name = 0;
+    	cout << "ERROR: Must enter a valid server name" << endl
+    	     << "Please enter a new server name: ";
+        while (!(cin >> new_server_name) || (new_server_name == ""))
+        {   
+            cout << "Bad input - try again: ";
+            cin.clear();
+            cin.ignore(INT_MAX, '\n');
+        }
+        server_name = new_server_name;
+		
+    }
     if(port == "" || port.find("-") != -1)
     {
     	string new_port = 0;
@@ -336,10 +347,9 @@ int main(int argc, char * argv[]) {
             cin.ignore(INT_MAX, '\n');
         }
         port = new_port;
-		
     }
 	
-	char* s_name = new char[server_name.length() + 1];
+/*	char* s_name = new char[server_name.length() + 1];
 	strcpy(s_name, server_name.c_str());
 	char* p = new char[port.length() + 1];
 	strcpy(p, port.c_str());
@@ -379,13 +389,13 @@ int main(int argc, char * argv[]) {
 	sprintf (buf, "hello");
 	send (sockfd, buf, strlen (buf)+1, 0);
 	recv (sockfd, buf, 1024, 0);
-	printf ("Received %s from the server\n", buf);
+	printf ("Received %s from the server\n", buf);*/
+	
+	// start a request channel
+	NetworkRequestChannel trial(server_name, port);
+	
+	
 	return 0;
-	
-	
-	
-	
-	
 /*
     int pid = fork();
     if(pid == 0)
