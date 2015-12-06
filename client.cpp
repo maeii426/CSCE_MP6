@@ -14,9 +14,6 @@
 /* INCLUDES */
 /*--------------------------------------------------------------------------*/
 
-// For bonus, use timer interrupt generator and a signal handler to print everything.  
-
-
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -31,13 +28,14 @@
 #include <pthread.h>
 #include <map>
 #include <netdb.h>
+#include <stdio.h>
 
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h>
 
-#include "reqchannel.h"
+#include "NetworkRequestChannel.h"
 #include "boundedbuffer.h"
 
 using namespace std;
@@ -93,10 +91,10 @@ struct handler_struct
 {
     boundedbuffer* request_buffer;
     vector<boundedbuffer>* response_buffers;
-    vector<RequestChannel*> request_channels;
+    vector<NetworkRequestChannel*> request_channels;
     int num_requests;
 
-    handler_struct(boundedbuffer* buff, vector<boundedbuffer>* rb, vector<RequestChannel*> rc, int nr)
+    handler_struct(boundedbuffer* buff, vector<boundedbuffer>* rb, vector<NetworkRequestChannel*> rc, int nr)
     {
         request_buffer = buff;
         response_buffers = rb;
@@ -143,35 +141,33 @@ void *event_handler_thread(void* arguments)
         {
             requests_sent++;
             string current_request = args->request_buffer->request_from_buffer();
-            
-            /* Temporarily disable SIGALRM handling */
             args->request_channels[i]->cwrite(current_request);
             fd2id_list[args->request_channels[i]->read_fd()] = atoi(&current_request.at(current_request.length()-1));
         }
     }
-
     
-    /* Start infinite event handler loop */
+    select_result = select(max_read + 1, &read_fds, NULL, NULL, NULL);
+cout << select_result << endl;
+    /* Start infinite event handler loop 
     while(true)
     {
         read_fds = temp;
-        
-        /* Temporarily disable SIGALRM handling */
+
         select_result = select(max_read + 1, &read_fds, NULL, NULL, NULL);
-        
+
         for(int i = 0; i < args->request_channels.size(); i++)
         {
-            if(FD_ISSET(args->request_channels[i]->read_fd(), &read_fds))
+            if(FD_ISSET(args->request_channels[i]->read_fd(), &read_fds) != 0)
             {
-                /* If data is available on the channel, read from it */
+                /* If data is available on the channel, read from it 
                 results_read++;
                 reply = args->request_channels[i]->cread();
-
-                /* Identify which response buffer the reply should be sent to */
+cout << select_result << " : " << results_read << " : " << i << " : " << reply << endl;
+                /* Identify which response buffer the reply should be sent to 
                 personID = fd2id_list[args->request_channels[i]->read_fd()];
                 fd2id_list[args->request_channels[i]->read_fd()] = -1;
 
-                /* Send the reply to the appropriate response buffers */
+                /* Send the reply to the appropriate response buffers 
                 int ct=0;
                 vector<boundedbuffer>::iterator it;
                 for(it = args->response_buffers->begin(); it != args->response_buffers->end(); it++)
@@ -184,17 +180,19 @@ void *event_handler_thread(void* arguments)
                 }
                 it->request_to_buffer(reply);
 
-                /* Channel is now free.  Write to it */
+                /* Channel is now free.  Write to it 
                 if(requests_sent < args->num_requests)
                 {
                     requests_sent++;
                     string current_request = args->request_buffer->request_from_buffer();
-                    
+
                     args->request_channels[i]->cwrite(current_request);
-                    
+
                     fd2id_list[args->request_channels[i]->read_fd()] = atoi(&current_request.at(current_request.length()-1));
                 }
+
             }
+
             if(results_read == args->num_requests)
             {
                 for(int i = 0; i < args->request_channels.size(); i++)
@@ -203,8 +201,9 @@ void *event_handler_thread(void* arguments)
                 }
                 pthread_exit(NULL);
             }
+            cout << "flag5" << endl;
         }
-    }
+    }*/
 }
 
 /* Each person has a thread which pushes queries to the request buffer */
@@ -257,12 +256,12 @@ void *statistics_thread(void* arguments)
 int main(int argc, char * argv[]) {
     
     /* Variable Declarations */
-    int requests_pperson = 100000; 
+    int requests_pperson = 10; 
 	int option_char;
-    int buffer_size = 10000;
-    int num_reqchan = 30;
+    int buffer_size = 10;
+    int num_reqchan = 3;
 	string port = "4995";
-	string server_name = "compute";
+	string server_name = "0";
     bool *responses_complete = new bool(false);
     bool *handler_done = new bool(false);
     
@@ -323,7 +322,20 @@ int main(int argc, char * argv[]) {
         }
         num_reqchan = new_reqchan;
     }
-	
+    if(server_name == "")
+    {
+    	string new_server_name = 0;
+    	cout << "ERROR: Must enter a valid server name" << endl
+    	     << "Please enter a new server name: ";
+        while (!(cin >> new_server_name) || (new_server_name == ""))
+        {   
+            cout << "Bad input - try again: ";
+            cin.clear();
+            cin.ignore(INT_MAX, '\n');
+        }
+        server_name = new_server_name;
+		
+    }
     if(port == "" || port.find("-") != -1)
     {
     	string new_port = 0;
@@ -336,130 +348,67 @@ int main(int argc, char * argv[]) {
             cin.ignore(INT_MAX, '\n');
         }
         port = new_port;
-		
-    }
-	
-	char* s_name = new char[server_name.length() + 1];
-	strcpy(s_name, server_name.c_str());
-	char* p = new char[port.length() + 1];
-	strcpy(p, port.c_str());
-	
-	struct addrinfo hints, *res;
-	int sockfd;
-
-	// first, load up address structs with getaddrinfo():
-
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	int status;
-	//getaddrinfo("www.example.com", "3490", &hints, &res);
-	if ((status = getaddrinfo(s_name, p, &hints, &res)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        return -1;
     }
 
-	// make a socket:
-	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	if (sockfd < 0)
+	/* Create new reqchannels */
+	vector<NetworkRequestChannel*> reqchannels;
+	for(int i=0; i<num_reqchan; i++)
 	{
-		perror ("Error creating socket\n");	
-		return -1;
+	    NetworkRequestChannel *nc = new NetworkRequestChannel(server_name, port);
+	    reqchannels.push_back(nc);
 	}
-
-	// connect!
-	if (connect(sockfd, res->ai_addr, res->ai_addrlen)<0)
-	{
-		perror ("connect error\n");
-		return -1;
-	}
-	printf ("Successfully connected to the server %s\n", s_name);
-	printf ("Now Attempting to send a message to the server\n", s_name);
-	char buf [1024];
-	sprintf (buf, "hello");
-	send (sockfd, buf, strlen (buf)+1, 0);
-	recv (sockfd, buf, 1024, 0);
-	printf ("Received %s from the server\n", buf);
-	return 0;
 	
-	
-	
-	
-	
-/*
-    int pid = fork();
-    if(pid == 0)
+	/* Generate request and response buffers as well as arg_structs */
+    boundedbuffer bounded_buffer(buffer_size);
+    vector<boundedbuffer> response_buffers;
+    vector<req_struct>    request_structures;
+    vector<stat_struct>   stat_structures;
+    for(int i = 0; i < 3; i++)
     {
-        RequestChannel chan("control", RequestChannel::CLIENT_SIDE);
-        
-         Create new reqchannels sequentially 
-        vector<RequestChannel*> reqchannels; 
-        for(int i=0; i<num_reqchan; i++)
-        {
-            string channel_name = chan.send_request("newthread");
-            RequestChannel *nc = new RequestChannel(channel_name, RequestChannel::CLIENT_SIDE);
-            reqchannels.push_back(nc);
-        }
-        
-        /* Generate request and response buffers as well as arg_structs 
-        boundedbuffer bounded_buffer(buffer_size);
-        vector<boundedbuffer> response_buffers;
-        vector<req_struct>    request_structures;
-        vector<stat_struct>   stat_structures;
-        for(int i = 0; i < 3; i++)
-        {
-            boundedbuffer buffer(requests_pperson);
-            response_buffers.push_back(buffer);
-        }
-        handler_struct handler_structure(&bounded_buffer, &response_buffers, reqchannels, 3*requests_pperson);
-        for(int i=0; i < 3; i++)
-        {
-            req_struct rs(i, requests_pperson, &bounded_buffer);
-            request_structures.push_back(rs);
-            stat_struct ss(i, responses_complete, &response_buffers[i], &histogram);
-            stat_structures.push_back(ss);
-        }
-      
-        /* Start the worker threads 
-        pthread_t event_handler_id;
-        pthread_create(&event_handler_id, NULL, event_handler_thread, &handler_structure);
-    
-        /* Create three request threads 
-        pthread_t request_threads[3];
-        for(int i=0; i<3; i++)
-        {
-            pthread_create(&request_threads[i], NULL, request_thread_func, &request_structures[i]);
-        }
-
-        /* Create three statistic threads 
-        pthread_t stat_threads[3];
-        for(int i=0; i<3; i++)
-        {
-            pthread_create(&stat_threads[i], NULL, statistics_thread, &stat_structures[i]);
-        }
-        
-        /* Wait for the request threads to complete 
-        for(int i=0; i<3; i++)
-        {
-            pthread_join(request_threads[i], NULL);
-        }
-
-        /* Wait for the event handler to complete 
-        pthread_join(event_handler_id, NULL);
-        *responses_complete = true;
-
-
-        /* Wait for the statistics threads to complete 
-        for(int i=0; i<3; i++)
-        {
-            pthread_join(stat_threads[i], NULL);
-        }
-        
-        /* Quit the master request channel 
-        chan.send_request("quit");
-        
-        return 0;
+        boundedbuffer buffer(requests_pperson);
+        response_buffers.push_back(buffer);
     }
-*/
-	
+    handler_struct handler_structure(&bounded_buffer, &response_buffers, reqchannels, 3*requests_pperson);
+    for(int i=0; i < 3; i++)
+    {
+        req_struct rs(i, requests_pperson, &bounded_buffer);
+        request_structures.push_back(rs);
+        stat_struct ss(i, responses_complete, &response_buffers[i], &histogram);
+        stat_structures.push_back(ss);
+    }   
+    
+    /* Start the event handler */
+    pthread_t event_handler_id;
+    pthread_create(&event_handler_id, NULL, event_handler_thread, &handler_structure);
+
+    /* Create three request threads */
+    pthread_t request_threads[3];
+    for(int i=0; i<3; i++)
+    {
+        pthread_create(&request_threads[i], NULL, request_thread_func, &request_structures[i]);
+    }
+    /* Create three statistic threads */
+    pthread_t stat_threads[3];
+    for(int i=0; i<3; i++)
+    {
+        pthread_create(&stat_threads[i], NULL, statistics_thread, &stat_structures[i]);
+    }
+    
+    /* Wait for the request threads to complete */
+    for(int i=0; i<3; i++)
+    {
+        pthread_join(request_threads[i], NULL);
+    }
+
+    /* Wait for the event handler to complete */
+    pthread_join(event_handler_id, NULL);
+    *responses_complete = true;
+
+    /* Wait for the statistics threads to complete */
+    for(int i=0; i<3; i++)
+    {
+        pthread_join(stat_threads[i], NULL);
+    }
+
+    return 0;
 }
